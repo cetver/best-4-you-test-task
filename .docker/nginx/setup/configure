@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=common/ansi-format
+source "${base_dir}/common/ansi-format"
+
+command="$0"
+
+ansi_format "$command" FG_YELLOW
+
+nginx_dir="/etc/nginx"
+mv --verbose --force "${base_dir}/template/"* "$nginx_dir"
+cp --verbose --symbolic-link "$nginx_dir/modules-available/"* "$nginx_dir/modules-enabled"
+cp --verbose --symbolic-link "$nginx_dir/sites-available/"* "$nginx_dir/sites-enabled"
+
+html_dir="/var/www/html"
+mkdir --verbose --parents "$html_dir"
+chmod --verbose 777 "$html_dir"
+

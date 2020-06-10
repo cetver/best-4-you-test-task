@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=common/ansi-format
+source "${base_dir}/common/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+
+function usage() {
+    cat <<EOF
+Usage: ${script_name} [options]
+Configure the "PHP-FPM" configuration files
+
+Options:
+    --php-fpm-conf               Path to the "php-fpm.conf" configuration file
+    --php-fpm-www-conf           Path to the "[php-fpm.d|pool.d]/www.conf" configuration file
+    --php-fpm-www-conf-listen    Value of the "listen" directive in the "[php-fpm.d|pool.d]/www.conf" configuration file
+    --help                       Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --php-fpm-conf)
+        shift
+        php_fpm_conf=$1
+        ;;
+    --php-fpm-www-conf)
+        shift
+        php_fpm_www_conf=$1
+        ;;
+    --php-fpm-www-conf-listen)
+        shift
+        php_fpm_www_conf_listen=$1
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [[ -z "$php_fpm_conf" || -z "$php_fpm_www_conf" || -z "$php_fpm_www_conf_listen" ]]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+stderr="/dev/stderr"
+
+##
+# php-fpm.conf
+##
+ansi_format "Processing the '${php_fpm_conf}'" FG_GREEN
+
+sed --in-place --regexp-extended "s@;?pid =.*@pid = run/php-fpm.pid@" "$php_fpm_conf"
+sed --in-place --regexp-extended "s@;?error_log =.*@error_log = ${stderr}@" "$php_fpm_conf"
+# https://github.com/docker-library/php/pull/725#issuecomment-443540114
+sed --in-place --regexp-extended "s@;?log_limit =.*@log_limit = 8192@" "$php_fpm_conf"
+sed --in-place --regexp-extended "s@;?emergency_restart_threshold =.*@emergency_restart_threshold = 10@" "$php_fpm_conf"
+sed --in-place --regexp-extended "s@;?emerge2ncy_restart_interval =.*@emergency_restart_interval = 1m@" "$php_fpm_conf"
+sed --in-place --regexp-extended "s@;?process_control_timeout =.*@process_control_timeout = 10s@" "$php_fpm_conf"
+sed --in-place --regexp-extended "s@;?daemonize =.*@daemonize = no@" "$php_fpm_conf"
+
+##
+# [php-fpm.d|pool.d]/www.conf
+##
+ansi_format "Processing the '${php_fpm_www_conf}'" FG_GREEN
+
+sed --in-place --regexp-extended "s@(.*?)listen =.*@listen = ${php_fpm_www_conf_listen}@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)listen.owner =.*@listen.owner = www-data@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)listen.group =.*@listen.group = www-data@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)process.dumpable =.*@process.dumpable = yes@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@pm =.*@pm = dynamic@" "$php_fpm_www_conf"
+# Total Max Processes = (Total RAM - (Used RAM + Buffer RAM)) / RAM per PHP process
+#
+# Memory info (Total/Used RAM) = free --human
+# Buffer RAM - safety buffer, set it yourself
+# RAM per PHP process = ps -ylC php-fpm7.4 --sort=rss (mebibytes)
+#
+# Example:
+# Total RAM: 1 GiB
+# Used RAM: 100 MiB
+# Buffer RAM: 100 MiB
+# RAM per PHP process: 30 Mib
+# Total Max Processes = (1024 - (100 + 100)) / 30 = 27.46 -> round down -> 25
+sed --in-place --regexp-extended "s@pm.max_children =.*@pm.max_children = 25@" "$php_fpm_www_conf"
+# (min_spare_servers + max_spare_servers) / 2
+sed --in-place --regexp-extended "s@pm.start_servers =.*@pm.start_servers = 20@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@pm.min_spare_servers =.*@pm.min_spare_servers = 15@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@pm.max_spare_servers =.*@pm.max_spare_servers = 25@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)pm.max_requests =.*@pm.max_requests = 1000@" "$php_fpm_www_conf"
+# if we send this to /dev/stdout, it never appears
+sed --in-place --regexp-extended "s@;?access.log =.*@access.log = ${stderr}@" "$php_fpm_www_conf"
+# required SYS_PTRACE permission: docker run --cap-add SYS_PTRACE ...
+#sed --in-place --regexp-extended "s@(.*?)slowlog =.*@slowlog = ${stderr}@" "$php_fpm_www_conf"
+# max_execution_time * 0.7
+#sed --in-place --regexp-extended "s@(.*?)request_slowlog_timeout =.*@request_slowlog_timeout = 42s@" "$php_fpm_www_conf"
+# xdebug - fastcgi_read_timeout
+sed --in-place --regexp-extended "s@(.*?)request_terminate_timeout =.*@request_terminate_timeout = 0@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)catch_workers_output =.*@catch_workers_output = yes@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)decorate_workers_output =.*@decorate_workers_output = no@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)clear_env =.*@clear_env = no@" "$php_fpm_www_conf"
+sed --in-place --regexp-extended "s@(.*?)security.limit_extensions =.*@security.limit_extensions = .php@" "$php_fpm_www_conf"

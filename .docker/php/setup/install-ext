@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=common/ansi-format
+source "${base_dir}/common/ansi-format"
+
+cpu_cores=$(nproc)
+pecl_download_dir=$(pecl config-get download_dir)
+
+function install-php-ext() {
+    ext=$1
+    ansi_format "Install ${ext}" FG_GREEN
+    docker-php-ext-install -j"$cpu_cores" "$ext"
+}
+
+function install-pecl-ext() {
+    ext=$1
+    ansi_format "Install ${ext} via PECL" FG_GREEN
+
+    pecl install "$ext"
+    docker-php-ext-enable "${ext}.so"
+}
+
+function ext-ini-file() {
+    php --ini | rg "$1" | tr --delete ","
+}
+
+ansi_format "Install PHP Extensions" FG_YELLOW
+
+apt-get update
+
+##
+# opcache
+##
+install-php-ext opcache
+
+##
+# xdebug
+##
+install-pecl-ext xdebug
+xdebug_ini_file=$(ext-ini-file "xdebug")
+echo "
+xdebug.remote_enable=1
+xdebug.remote_connect_back=1
+xdebug.remote_port=9000
+xdebug.idekey=PHPSTORM
+
+xdebug.var_display_max_children=256
+xdebug.var_display_max_data=1024
+xdebug.var_display_max_depth=6
+
+xdebug.cli_color=2
+
+#xdebug.remote_log=/tmp/xdebug.log
+" >> "$xdebug_ini_file"
+
+##
+# redis
+##
+#install-pecl-ext igbinary
+#
+#"${base_dir}/common/apt-get-install" libzstd-dev
+#pecl bundle --destination "$pecl_download_dir" redis
+#docker-php-ext-configure "${pecl_download_dir}/redis" --enable-redis-igbinary --enable-redis-lzf --enable-redis-zstd
+#install-php-ext "${pecl_download_dir}/redis"
+
+##
+# intl
+##
+#"${base_dir}/common/apt-get-install" libicu-dev
+#install-php-ext intl
+
+##
+# pdo_pgsql
+##
+#"${base_dir}/common/apt-get-install" libpq-dev
+#install-php-ext pdo_pgsql
+
+##
+# pdo_mysql
+##
+#install-php-ext pdo_mysql
+
+##
+# zip
+##
+#"${base_dir}/common/apt-get-install" libzip-dev
+#install-php-ext zip
+
+##
+# gmagick
+##
+#"${base_dir}/common/apt-get-install" libgraphicsmagick1-dev libpng-dev libjpeg-dev
+#pecl bundle --destination "$pecl_download_dir" "channel://pecl.php.net/gmagick-2.0.5RC1"
+#docker-php-ext-configure "${pecl_download_dir}/gmagick" --with-gmagick
+#install-php-ext "${pecl_download_dir}/gmagick"
+
+#
+# cleaning
+#
+"${base_dir}/common/clear-fs"
+rm --recursive --force "$(dirname "$pecl_download_dir")"

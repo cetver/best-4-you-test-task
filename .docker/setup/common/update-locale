@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=ansi-format
+source "${base_dir}/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+locale_file="/etc/locale.gen"
+
+function usage() {
+    cat <<EOF
+Usage: ${script_name} [options]
+Add system locale
+
+Options:
+    --locale    Locale from $locale_file
+    --help      Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --locale)
+        shift
+        locale=$1
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [[ -z "$locale" ]]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+locale_variables=(LANG LANGUAGE LC_ADDRESS LC_COLLATE LC_CTYPE LC_IDENTIFICATION LC_MEASUREMENT LC_MESSAGES LC_MONETARY)
+locale_variables+=(LC_NAME LC_NUMERIC LC_PAPER LC_TELEPHONE LC_TIME)
+update_locale_arguments=""
+for locale_variable in "${locale_variables[@]}"; do
+    unset "$locale_variable"
+    update_locale_arguments="${update_locale_arguments} ${locale_variable}=${locale}"
+done
+
+sed --in-place --regexp-extended "s@# ${locale}@${locale}@" "$locale_file"
+locale-gen
+update-locale "$update_locale_arguments"

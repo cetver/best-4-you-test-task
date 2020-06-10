@@ -1,0 +1,32 @@
+parameters:
+    hz: 'qwe'
+api_platform:
+    title: 'Best 4 you test task'
+    description: 'Api docs'
+    version: 1
+    show_webby: false
+    swagger:
+        versions:
+            - 3
+    enable_re_doc: false
+    mapping:
+        paths: ['%kernel.project_dir%/src/Entity']
+    formats:
+        jsonapi:
+            mime_types:
+                - application/vnd.api+json
+        html:
+            mime_types:
+                - text/html
+    patch_formats:
+        jsonapi:
+            mime_types:
+                - application/vnd.api+json
+    error_formats:
+        jsonapi:
+            mime_types:
+                - application/vnd.api+json
+    collection:
+        pagination:
+            client_items_per_page: true
+            maximum_items_per_page: 100

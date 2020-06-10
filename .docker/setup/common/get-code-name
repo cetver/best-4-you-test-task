@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+#rg --no-line-number --color never --regexp 'VERSION_CODENAME=(.*)' --replace '$1' /etc/os-release
+grep --regexp 'VERSION_CODENAME=.*' /etc/os-release | sed --regexp-extended 's@.+=@@'

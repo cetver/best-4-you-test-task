@@ -1,0 +1,89 @@
+version: "3.6"
+
+services:
+    best-4-you-test-task-php:
+        image: best-4-you-test-task-php-fpm-image
+        hostname: php7_4-debian
+        cap_add:
+            # required by https://www.php.net/manual/en/install.fpm.configuration.php#slowlog
+            - SYS_PTRACE
+        build:
+            context: ./php
+            dockerfile: Dockerfile
+            args:
+                PHP_FPM_VERSION: 7.4
+                SOCKET_DIRS: 'php'
+                SOURCES_LIST_COUNTRY_CODE: cz
+                SYSTEM_LOCALE: en_GB.UTF-8
+                SYSTEM_USERNAME: best-4-you-test-task
+                SYSTEM_PASSWORD: qwe
+        volumes:
+            # config
+            -
+                type: volume
+                source: best-4-you-test-task-php-etc-volume
+                target: /usr/local/etc
+            # source code
+            -
+                type: volume
+                source: best-4-you-test-task-source-code-volume
+                target: /var/www/html
+            # socket
+            -
+                type: bind
+                source: ./php/volumes/run/php
+                target: /var/run/php
+
+    best-4-you-test-task-nginx:
+        image: best-4-you-test-task-nginx-image
+        hostname: best-4-you-test-task-nginx-debian
+        depends_on:
+            - best-4-you-test-task-php
+        build:
+            context: ./nginx
+            dockerfile: Dockerfile
+            args:
+                SOURCES_LIST_COUNTRY_CODE: cz
+                SYSTEM_LOCALE: en_GB.UTF-8
+                SOCKET_DIRS: php
+        ports:
+            - 80:80
+            - 443:443
+        volumes:
+            # config
+            -
+                type: volume
+                source: best-4-you-test-task-nginx-etc-volume
+                target: /etc/nginx
+            # source code
+            -
+                type: volume
+                source: best-4-you-test-task-source-code-volume
+                target: /var/www/html
+            # php socket
+            -
+                type: bind
+                source: ./php/volumes/run/php
+                target: /var/run/php
+
+volumes:
+    # php
+    best-4-you-test-task-php-etc-volume:
+        driver: local
+        driver_opts:
+            device: /var/www/best-4-you-test-task/.docker/php/volumes/etc
+            type: none
+            o: bind
+    best-4-you-test-task-source-code-volume:
+        driver: local
+        driver_opts:
+            device: /var/www/best-4-you-test-task/.docker/..
+            type: none
+            o: bind
+    # nginx
+    best-4-you-test-task-nginx-etc-volume:
+        driver: local
+        driver_opts:
+            device: /var/www/best-4-you-test-task/.docker/nginx/volumes/etc
+            type: none
+            o: bind

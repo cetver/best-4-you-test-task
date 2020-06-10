@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=common/ansi-format
+source "${base_dir}/common/ansi-format"
+
+command="$0"
+cpu_cores=$(nproc)
+
+function git_clone() {
+    repository=$1
+    directory=$2
+    git clone --depth 1 "$repository" -- "$directory"
+}
+
+function git_checkout_last_version() {
+    git fetch --tags --quiet
+    tag=$(git rev-parse --tags | head --lines 1)
+    if [[ -z "$tag" ]]; then
+        last_tag="master"
+    else
+        last_tag=$(git describe --abbrev=0 --tags "$(git rev-list --tags --max-count=1)")
+    fi
+
+    git checkout "$last_tag"
+}
+
+function project_name_from_url() {
+    echo "$1" | tr '/' '\n' | tail --lines 1
+}
+
+
+ansi_format "$command" FG_YELLOW
+
+code_name=$("${base_dir}/common/get-code-name")
+curl --silent --show-error --compressed --location https://nginx.org/keys/nginx_signing.key | apt-key add -
+echo "deb-src https://nginx.org/packages/mainline/debian/ ${code_name} nginx" > /etc/apt/sources.list.d/nginx.list
+
+src_dir="/usr/src"
+apt-src update
+apt-src install --location "$src_dir" nginx
+
+nginx_dir=$(fdfind --type directory --max-depth 1 nginx "$src_dir")
+nginx_rules_file="${nginx_dir}/debian/rules"
+nginx_lib_dir="/var/lib/nginx"
+nginx_cflags=$(
+# shellcheck disable=SC2016
+rg --no-line-number --multiline --multiline-dotall \
+--regexp 'cd \$\(BUILDDIR_nginx\) && \\(.*?)touch \$@' --replace '$1' "$nginx_rules_file" | \
+tr '\n' '\0' | \
+sed --regexp-extended "s@--error-log-path=/var/log/nginx/error\.log@--error-log-path=/dev/stderr@" | \
+sed --regexp-extended "s@--http-log-path=/var/log/nginx/access\.log@--http-log-path=/dev/stdout@" | \
+sed --regexp-extended "s@--http-client-body-temp-path=/var/cache/nginx/client_temp@--http-client-body-temp-path=${nginx_lib_dir}/body@" | \
+sed --regexp-extended "s@--http-proxy-temp-path=/var/cache/nginx/proxy_temp@--http-proxy-temp-path=${nginx_lib_dir}/proxy@" | \
+sed --regexp-extended "s@--http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp@--http-fastcgi-temp-path=${nginx_lib_dir}/fastcgi@" | \
+sed --regexp-extended "s@--http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp@--http-uwsgi-temp-path=${nginx_lib_dir}/uwsgi@" | \
+sed --regexp-extended "s@--http-scgi-temp-path=/var/cache/nginx/scgi_temp@--http-scgi-temp-path=${nginx_lib_dir}/scgi@"
+# pretty cflags - | sed --regexp-extended "s@ @ \\\n\t\t@'
+)
+nginx_dbg_cflags=$(
+# shellcheck disable=SC2016
+rg --no-line-number --multiline --multiline-dotall \
+--regexp 'cd \$\(BUILDDIR_nginx_debug\) && \\(.*?)touch \$@' --replace '$1' "$nginx_rules_file" | \
+tr '\n' '\0' | \
+sed --regexp-extended "s@--error-log-path=/var/log/nginx/error\.log@--error-log-path=/dev/stderr@" | \
+sed --regexp-extended "s@--http-log-path=/var/log/nginx/access\.log@--http-log-path=/dev/stdout@" | \
+sed --regexp-extended "s@--http-client-body-temp-path=/var/cache/nginx/client_temp@--http-client-body-temp-path=${nginx_lib_dir}/body@" | \
+sed --regexp-extended "s@--http-proxy-temp-path=/var/cache/nginx/proxy_temp@--http-proxy-temp-path=${nginx_lib_dir}/proxy@" | \
+sed --regexp-extended "s@--http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp@--http-fastcgi-temp-path=${nginx_lib_dir}/fastcgi@" | \
+sed --regexp-extended "s@--http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp@--http-uwsgi-temp-path=${nginx_lib_dir}/uwsgi@" | \
+sed --regexp-extended "s@--http-scgi-temp-path=/var/cache/nginx/scgi_temp@--http-scgi-temp-path=${nginx_lib_dir}/scgi@"
+)
+
+mkdir --verbose --parents "$nginx_lib_dir"
+
+dynamic_modules_dir="${src_dir}/nginx-dynamic-modules"
+mkdir --verbose --parents "$dynamic_modules_dir"
+
+# Modules
+# https://salsa.debian.org/nginx-team/nginx/-/blob/debian/1.16.1-3/debian/rules#L48
+# https://salsa.debian.org/nginx-team/nginx/-/blob/debian/1.16.1-3/debian/rules#L107
+
+##
+# debug - skip install nginx-debug
+##
+nginx_cflags="${nginx_cflags} --with-debug"
+
+##
+# pcre_jit
+##
+nginx_cflags="${nginx_cflags} --with-pcre-jit"
+
+
+##
+# http-echo
+##
+repository="https://github.com/openresty/echo-nginx-module"
+project_name=$(project_name_from_url "$repository")
+mod_dir="${dynamic_modules_dir}/${project_name}"
+git_clone "$repository" "$mod_dir"
+(
+cd "$mod_dir"
+git_checkout_last_version
+)
+nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# http_brotli
+##
+repository="https://github.com/google/ngx_brotli"
+project_name=$(project_name_from_url "$repository")
+mod_dir="${dynamic_modules_dir}/${project_name}"
+git_clone "$repository" "$mod_dir"
+(
+cd "$mod_dir"
+git_checkout_last_version
+git submodule update --init --recursive
+cd deps/brotli
+mkdir out
+cd out
+../configure-cmake --disable-debug
+make -j"$cpu_cores" brotli
+make -j"$cpu_cores" test
+make -j"$cpu_cores" install
+)
+nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# http_ndk
+##
+#repository="https://github.com/vision5/ngx_devel_kit"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# nchan
+##
+#repository="https://github.com/slact/nchan"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# http-uploadprogress
+##
+#repository="https://github.com/masterzen/nginx-upload-progress-module"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# http_geoip_module
+##
+#"${base_dir}/common/apt-get-install" libgeoip-dev
+#nginx_cflags="${nginx_cflags} --with-http_geoip_module=dynamic"
+
+##
+# http_image_filter_module
+##
+#"${base_dir}/common/apt-get-install" libgd-dev
+#nginx_cflags="${nginx_cflags} --with-http_image_filter_module=dynamic"
+
+##
+# http_xslt_module
+##
+#"${base_dir}/common/apt-get-install" libxslt1-dev
+#nginx_cflags="${nginx_cflags} --with-http_xslt_module=dynamic"
+
+##
+# http-fancyindex
+##
+#repository="https://github.com/aperezdc/ngx-fancyindex"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# rtmp
+##
+#repository="https://github.com/arut/nginx-rtmp-module"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# http-upstream-fair
+##
+#repository="https://github.com/gnosek/nginx-upstream-fair"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+##
+# http-subs-filter
+##
+#repository="https://github.com/yaoweibin/ngx_http_substitutions_filter_module"
+#project_name=$(project_name_from_url "$repository")
+#mod_dir="${dynamic_modules_dir}/${project_name}"
+#git_clone "$repository" "$mod_dir"
+#(
+#cd "$mod_dir"
+#git_checkout_last_version
+#)
+#nginx_cflags="${nginx_cflags} --add-dynamic-module=${mod_dir}"
+
+#
+# patch
+#
+
+"${base_dir}/create_debian_rules_cflags_patch.py" \
+    --debian-rules-file "$nginx_rules_file" \
+    --nginx-cflags "$nginx_cflags" \
+    --nginx-dbg-cflags "$nginx_dbg_cflags"
+
+patch "$nginx_rules_file" "${nginx_rules_file}-cflags.patch"
+
+#
+# build
+#
+
+apt-src build --location "$src_dir" nginx
+
+#
+# install nginx
+#
+
+fdfind --type file --extension deb --exclude '*dbg*' . "$src_dir" --exec dpkg --install {}
+#
+# install nginx and nginx-debug
+#
+## note: nginx.deb must be installed first
+#for package in $(fdfind --type file --extension deb . "$src_dir" | sort --reverse) ; do
+#    dpkg --install "$package"
+#done
+
+#
+# copy compiled modules to their directory
+#
+
+# shellcheck disable=SC2016
+nginx_modules_dir=$(nginx -V 2>&1 | rg --no-line-number --only-matching --regexp '--modules-path=(.*?) ' --replace '$1')
+fdfind --type file _module.so "${nginx_dir}/objs" --exec cp --verbose {} "$nginx_modules_dir"
+## shellcheck disable=SC2016
+#nginx_debug_modules_dir=$(nginx-debug -V 2>&1 | rg --no-line-number --only-matching --regexp '--modules-path=(.*?) ' --replace '$1')
+#fdfind --type file _module.so "${nginx_dir}/objs" --exec cp --verbose {} "$nginx_debug_modules_dir"
+
+#
+# cleaning
+#
+
+rm --recursive --force "$nginx_dir"
+rm --recursive --force "$dynamic_modules_dir"
+fdfind --max-depth 1 --type file nginx "$src_dir" --exec rm --recursive --force {}
+
+build_dependencies=$(
+# shellcheck disable=SC2016
+apt-rdepends --build-depends nginx 2>&1 | \
+rg --no-line-number --multiline --multiline-dotall --only-matching --regexp 'Build-Depends: ([\w-]+)' --replace '$1' | \
+tr '\n' ' '
+)
+apt-get update
+# shellcheck disable=SC2086
+apt-get purge --yes $build_dependencies
+"${base_dir}/common/clear-fs"

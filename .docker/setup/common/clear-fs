@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+apt-get --yes clean
+apt-get --yes autoremove
+rm --recursive --force /usr/share/doc-base/*
+rm --recursive --force /usr/share/doc/*
+rm --recursive --force /var/cache/*
+rm --recursive --force /var/lib/apt/lists/*
+rm --recursive --force /var/log/*
+

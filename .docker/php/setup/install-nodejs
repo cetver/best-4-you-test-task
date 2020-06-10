@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=common/ansi-format
+source "${base_dir}/common/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+
+function usage() {
+    cat <<EOF
+Usage: ${script_name} [options]
+Install NodeJS/YARN
+
+Options:
+    --version    The major version of NodeJS
+                 See https://nodejs.org/en/download/releases/
+    --help       Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --version)
+        shift
+        version=$1
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [[ -z "$version" ]]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+code_name=$("${base_dir}/common/get-code-name")
+
+curl --silent --show-error --compressed --location https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
+curl --silent --show-error --compressed --location https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
+echo "deb https://deb.nodesource.com/node_${version}.x ${code_name} main" > /etc/apt/sources.list.d/node-js.list
+echo "deb https://dl.yarnpkg.com/debian/ stable main" > /etc/apt/sources.list.d/yarn.list
+
+apt-get update
+"${base_dir}/common/apt-get-install" nodejs yarn
+"${base_dir}/common/clear-fs"
+
+#
+# cleaning
+#
+
+# https://docs.npmjs.com/misc/config
+# npm config ls -l
+npm_cache_dir=$(npm config get cache)
+npm_tmp_dir=$(npm config get tmp)
+npm_heading=$(npm config get heading)
+npm uninstall --no-progress --global npm
+rm --verbose --recursive --force "$npm_cache_dir"
+fdfind --type directory "$npm_heading" "$npm_tmp_dir" --exec rm --verbose --recursive --force {};

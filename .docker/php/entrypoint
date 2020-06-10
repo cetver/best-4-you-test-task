@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -e
+
+# shellcheck disable=SC1090
+source "${HOME}/.profile"
+
+if [ "$1" = "start" ]; then
+    composer --no-interaction self-update
+
+    if [ -n "$NODEJS_MAJOR_VERSION" ]; then
+        # https://classic.yarnpkg.com/en/docs/cli/self-update/
+        yarn policies --non-interactive set-version
+    fi
+
+    exec sudo --preserve-env php-fpm
+fi
+
+exec "$@"

@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=common/ansi-format
+source "${base_dir}/common/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+
+function usage() {
+    cat <<EOF
+Usage: ${script_name} [options]
+Configure the "PHP CLI/FPM" main configuration files
+
+Options:
+    --php-ini-fpm    Path to the "php-fpm-fcgi.ini" configuration file
+    --php-ini-cli    Path to the "php-cli.ini" configuration file
+    --help           Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --php-ini-fpm)
+        shift
+        php_ini_fpm=$1
+        ;;
+    --php-ini-cli)
+        shift
+        php_ini_cli=$1
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [[ -z "$php_ini_fpm" || -z "$php_ini_cli" ]]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+##
+# FPM
+##
+ansi_format "Processing the '${php_ini_fpm}'" FG_GREEN
+
+# Replace "(n spaces) = (n spaces)" to "="
+sed --in-place --regexp-extended "s@=[ ]{1,}@=@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@[ ]{1,}=@=@" "$php_ini_fpm"
+# Common
+sed --in-place --regexp-extended "s@;?error_reporting=.*@error_reporting=E_ALL \& ~E_DEPRECATED \& ~E_STRICT@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?display_errors=.*@display_errors=On@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?display_startup_errors=.*@display_startup_errors=On@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?html_errors=.*@html_errors=On@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?zend\.exception_ignore_args=.*@zend\.exception_ignore_args=Off@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?max_input_vars=.*@max_input_vars=5000@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?memory_limit=.*@memory_limit=512M@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?enable_post_data_reading=.*@enable_post_data_reading=On@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?post_max_size=.*@post_max_size=32M@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?upload_max_filesize=.*@upload_max_filesize=32M@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?allow_url_fopen=.*@allow_url_fopen=On@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?date\.timezone=.*@date\.timezone=UTC@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?pdo_mysql\.default_socket=.*@pdo_mysql\.default_socket=/var/run/mysql/mysqld.sock@" "$php_ini_fpm"
+# Security
+sed --in-place --regexp-extended "s@;?short_open_tag=.*@short_open_tag=Off@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?expose_php=.*@expose_php=Off@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?session\.name=.*@session\.name=SID@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?cgi\.fix_pathinfo=.*@cgi\.fix_pathinfo=0@" "$php_ini_fpm"
+# Performance
+sed --in-place --regexp-extended "s@;?opcache\.enable=.*@opcache\.enable=1@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?opcache\.memory_consumption=.*@opcache\.memory_consumption=256@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?opcache\.max_accelerated_files=.*@opcache\.max_accelerated_files=20000@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?opcache\.validate_timestamps=.*@opcache\.validate_timestamps=1@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?opcache\.revalidate_freq=.*@opcache\.revalidate_freq=0@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?opcache\.huge_code_pages=.*@opcache\.huge_code_pages=1@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?realpath_cache_size=.*@realpath_cache_size=4096K@" "$php_ini_fpm"
+sed --in-place --regexp-extended "s@;?realpath_cache_ttl=.*@realpath_cache_ttl=600@" "$php_ini_fpm"
+
+##
+# CLI
+##
+ansi_format "Processing the '${php_ini_cli}'" FG_GREEN
+
+# Replace "(n spaces) = (n spaces)" to "="
+sed --in-place --regexp-extended "s@=[ ]{1,}@=@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@[ ]{1,}=@=@" "$php_ini_cli"
+# Common
+sed --in-place --regexp-extended "s@;?error_reporting=.*@error_reporting=E_ALL \& ~E_DEPRECATED \& ~E_STRICT@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?display_errors=.*@display_errors=On@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?display_startup_errors=.*@display_startup_errors=On@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?zend\.exception_ignore_args=.*@zend\.exception_ignore_args=Off@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?memory_limit=.*@memory_limit=1024M@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?post_max_size=.*@post_max_size=32M@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?upload_max_filesize=.*@upload_max_filesize=32M@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?allow_url_fopen=.*@allow_url_fopen=On@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?date\.timezone=.*@date\.timezone=UTC@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?pdo_mysql\.default_socket=.*@pdo_mysql\.default_socket=/var/run/mysql/mysqld.sock@" "$php_ini_fpm"
+# Security 
+sed --in-place --regexp-extended "s@;?short_open_tag=.*@short_open_tag=Off@" "$php_ini_cli"
+# Performance
+sed --in-place --regexp-extended "s@;?opcache\.enable=.*@opcache\.enable=0@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.enable_cli=.*@opcache\.enable_cli=1@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.file_cache=.*@opcache\.file_cache=/tmp/opcache-file-cache@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.file_cache_consistency_checks=.*@opcache\.file_cache_consistency_checks=1@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.memory_consumption=.*@opcache\.memory_consumption=256@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.max_accelerated_files=.*@opcache\.max_accelerated_files=20000@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.validate_timestamps=.*@opcache\.validate_timestamps=1@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.revalidate_freq=.*@opcache\.revalidate_freq=0@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?opcache\.huge_code_pages=.*@opcache\.huge_code_pages=1@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?realpath_cache_size=.*@realpath_cache_size=4096K@" "$php_ini_cli"
+sed --in-place --regexp-extended "s@;?realpath_cache_ttl=.*@realpath_cache_ttl=600@" "$php_ini_cli"

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=ansi-format
+source "${base_dir}/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+sources_list_path="/etc/apt/sources.list"
+
+function usage() {
+    cat <<EOF
+Usage: ${script_name} [options]
+Rewrite $sources_list_path
+
+Options:
+    --country-code    Country code (ISO 3166-1 alpha-2).
+                      See https://www.debian.org/mirror/list (Primary Debian mirror sites)
+    --help            Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --country-code)
+        shift
+        country_code=$1
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [[ -z "$country_code" ]]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+code_name=$("${base_dir}/get-code-name")
+sources_list_content="
+deb http://ftp.${country_code}.debian.org/debian ${code_name} main contrib non-free
+deb http://ftp.${country_code}.debian.org/debian ${code_name}-updates main contrib non-free
+deb http://security.debian.org/debian-security ${code_name}/updates main contrib non-free
+"
+echo "$sources_list_content" > "$sources_list_path"
+
+ansi_format "The content of the '${sources_list_path}' has been replaced by: ${sources_list_content}" FG_GREEN

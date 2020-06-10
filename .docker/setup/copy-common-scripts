@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+#
+# Copy scripts from [setup/common] to [<image>/setup/common] for avoiding docker error:
+# Error response from daemon: COPY failed: Forbidden path outside the build context: ...
+# !!! MUST BE EXECUTED BEFORE the "docker build" command !!!
+#
+
+images=()
+
+setup_dir=$(dirname -- "$(realpath -- "$0")")
+docker_dir=$(dirname "$setup_dir")
+
+readarray -t images < <(
+    fdfind --type directory --max-depth 1 --exclude "$(basename "$setup_dir")" . "$docker_dir"
+#    find "$docker_dir" \
+#        -maxdepth 1 \
+#        -type d \
+#        -not \( -path "$docker_dir" \) \
+#        -not \( -path "$setup_dir" \)
+)
+
+for image in "${images[@]}"; do
+    destination="${image}/setup/common"
+    mkdir --verbose --parents "$destination"
+    basename "$image"
+    cp --verbose --force "${setup_dir}/common/"* "$destination"
+done

@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+
+#######################################
+# Formats a string with ANSI codes
+# Arguments:
+#   $1 the string to be formatted
+#   FG_* the foreground color, available values
+#       FG_BLACK
+#       FG_RED
+#       FG_GREEN
+#       FG_YELLOW
+#       FG_BLUE
+#       FG_PURPLE
+#       FG_CYAN
+#       FG_GREY
+#   BG_* the background color, available values
+#       BG_BLACK
+#       BG_RED
+#       BG_GREEN
+#       BG_YELLOW
+#       BG_BLUE
+#       BG_PURPLE
+#       BG_CYAN
+#       BG_GREY
+#   TXT_* the text transformation, available values
+#       TXT_RESET
+#       TXT_NORMAL
+#       TXT_BOLD
+#       TXT_ITALIC
+#       TXT_UNDERLINE
+#       TXT_BLINK
+#       TXT_NEGATIVE
+#       TXT_CONCEALED
+#       TXT_CROSSED_OUT
+#       TXT_FRAMED
+#       TXT_ENCIRCLED
+#       TXT_OVERLINED
+# Returns:
+#   None
+# Usage:
+#   ansi_format "Hello world" FG_GREEN
+#   ansi_format "Hello world" BG_PURPLE
+#   ansi_format "Hello world" TXT_BOLD
+#   ansi_format "Hello world" FG_YELLOW BG_BLACK TXT_BLINK
+#######################################
+function ansi_format {
+    STRING=$1
+    FG_COLOR=-1
+    BG_COLOR=-1
+    TXT_TRANSFORMATION=-1
+    FORMAT=''
+
+    for argument in "$@"; do
+        if [[ ${argument} == FG_* ]]; then
+            FG_COLOR=${argument}
+            continue
+        fi
+        if [[ ${argument} == BG_* ]]; then
+            BG_COLOR=${argument}
+            continue
+        fi
+        if [[ ${argument} == TXT_* ]]; then
+            TXT_TRANSFORMATION=${argument}
+            continue
+        fi
+    done
+
+    declare -A FG_COLORS
+    FG_COLORS[FG_BLACK]=30;
+    FG_COLORS[FG_RED]=31;
+    FG_COLORS[FG_GREEN]=32;
+    FG_COLORS[FG_YELLOW]=33;
+    FG_COLORS[FG_BLUE]=34;
+    FG_COLORS[FG_PURPLE]=35;
+    FG_COLORS[FG_CYAN]=36;
+    FG_COLORS[FG_GREY]=37;
+
+    declare -A BG_COLORS
+    BG_COLORS[BG_BLACK]=40;
+    BG_COLORS[BG_RED]=41;
+    BG_COLORS[BG_GREEN]=42;
+    BG_COLORS[BG_YELLOW]=43;
+    BG_COLORS[BG_BLUE]=44;
+    BG_COLORS[BG_PURPLE]=45;
+    BG_COLORS[BG_CYAN]=46;
+    BG_COLORS[BG_GREY]=47;
+
+    declare -A TXT_TRANSFORMATIONS
+    TXT_TRANSFORMATIONS[TXT_RESET]=0;
+    TXT_TRANSFORMATIONS[TXT_NORMAL]=0;
+    TXT_TRANSFORMATIONS[TXT_BOLD]=1;
+    TXT_TRANSFORMATIONS[TXT_ITALIC]=3;
+    TXT_TRANSFORMATIONS[TXT_UNDERLINE]=4;
+    TXT_TRANSFORMATIONS[TXT_BLINK]=5;
+    TXT_TRANSFORMATIONS[TXT_NEGATIVE]=7;
+    TXT_TRANSFORMATIONS[TXT_CONCEALED]=8;
+    TXT_TRANSFORMATIONS[TXT_CROSSED_OUT]=9;
+    TXT_TRANSFORMATIONS[TXT_FRAMED]=51;
+    TXT_TRANSFORMATIONS[TXT_ENCIRCLED]=52;
+    TXT_TRANSFORMATIONS[TXT_OVERLINED]=53;
+
+    if [ ${#FG_COLORS[$FG_COLOR]} != 0 ]; then
+        FORMAT=${FG_COLORS[$FG_COLOR]}
+    fi
+    if [ ${#BG_COLORS[$BG_COLOR]} != 0 ]; then
+        FORMAT="${FORMAT};${BG_COLORS[$BG_COLOR]}"
+    fi
+    if [ ${#TXT_TRANSFORMATIONS[$TXT_TRANSFORMATION]} != 0 ]; then
+        FORMAT="${FORMAT};${TXT_TRANSFORMATIONS[$TXT_TRANSFORMATION]}"
+    fi
+
+    echo -e "\033[0m\033[0${FORMAT}m${STRING}\033[0m"
+}

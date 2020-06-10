@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=ansi-format
+source "${base_dir}/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+base_socket_dir="/var/run"
+
+function usage() {
+    cat <<EOF
+Usage: ${script_name} [options]
+Create socket directories
+
+Options:
+    --directories    Space separated directories (${base_socket_dir}/*)
+    --help           Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --directories)
+        shift
+        # shellcheck disable=SC2206
+        directories=($1)
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [ ${#directories[@]} -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+for directory in "${directories[@]}"; do
+    dir="${base_socket_dir}/${directory}"
+    mkdir --verbose "$dir"
+    chmod --verbose 777 "$dir"
+done

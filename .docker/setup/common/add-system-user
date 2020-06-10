@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+base_dir=$(dirname -- "$(realpath -- "$0")")
+# shellcheck source=ansi-format
+source "${base_dir}/ansi-format"
+
+command="${0} ${*}"
+script_name=$(basename "$0")
+
+function usage() {
+    cat <<EOF
+Usage: $script_name [options]
+Add system user
+
+Options:
+    --username    Username
+    --password    Password
+    --help        Display this message
+EOF
+}
+
+while [ "$1" != "" ]; do
+    case $1 in
+    --username)
+        shift
+        username=$1
+        ;;
+    --password)
+        shift
+        password=$1
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [[ -z "$username" || -z "$password" ]]; then
+    usage
+    exit 1
+fi
+
+ansi_format "$command" FG_YELLOW
+
+ansi_format "Add group" FG_GREEN
+addgroup --debug "$username"
+ansi_format "Add user" FG_GREEN
+useradd --create-home --shell /bin/bash --gid "$username" --groups sudo "$username"
+ansi_format "Update user's password" FG_GREEN
+echo "$username:$password" | chpasswd
+
+ansi_format "Configure bash files" FG_GREEN
+root_home_dir="/root"
+user_home_dir="/home/${username}"
+skeleton_dir="/etc/skel"
+# shellcheck disable=SC2012
+bash_files_regex=$(ls --almost-all --format commas "$skeleton_dir" | tr --delete ' ' | tr ',' '|')
+# see configure-bash
+bash_files_regex="${bash_files_regex}|.bash_aliases"
+fdfind --hidden "$bash_files_regex" "$root_home_dir" --exec cp --verbose --force {} "$user_home_dir"
+fdfind --hidden "$bash_files_regex" "$user_home_dir" --exec chown --verbose "$username": {}
+

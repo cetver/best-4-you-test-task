@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+apt-get --yes --no-install-recommends --no-install-suggests install "$@"
